@@ -27,14 +27,15 @@ This is a fork of [themrdemonized/xray-monolith](https://github.com/themrdemoniz
 
 ## Installation
 
-1. Install [Modded Exes 2026.10.11](https://github.com/themrdemonized/xray-monolith/releases/tag/2026.10.11) as usual: the standard archive for the `fsr` release, or MT-TEST for the `fsr-mt` release.
-2. Extract the matching FSR release archive into your Anomaly folder and overwrite:
-   * `bin\AnomalyDX11.exe`, `bin\AnomalyDX11AVX.exe`
-   * `bin\amd_fidelityfx_loader_dx12.dll`, `bin\amd_fidelityfx_upscaler_dx12.dll`
-   * `db\mods\00_modded_exes_gamedata.db0` (adds the FSR options page)
+The release archives are complete Modded Exes packages and replace a Modded Exes install; nothing else is needed.
+
+1. Download `STALKER-Anomaly-modded-exes-FSR` (standard) or `STALKER-Anomaly-modded-exes-MT-TEST-FSR` (MT-TEST) from [Releases](https://github.com/Tavofn/xray-monolith-fsr/releases).
+2. Extract it into your Anomaly folder and overwrite all files.
 3. Start the game with the DX11 renderer, then pick a mode in the options.
 
-GAMMA: updating or reinstalling GAMMA restores the official exes. Re-apply step 2 afterwards.
+Each archive contains all eight exes and the Modded Exes gamedata (`db\mods\00_modded_exes_gamedata.db0`, with the FSR options page). Only the DX11 exes have FSR; the DX8, DX9 and DX10 exes are the unmodified upstream 2026.10.11 builds.
+
+GAMMA: updating or reinstalling GAMMA restores the official exes. Extract the archive again afterwards.
 
 ## Settings
 
@@ -60,7 +61,9 @@ Build as described in the upstream section below. The FSR API headers are includ
 
 ## License
 
-The AMD FSR headers and DLLs are © Advanced Micro Devices, Inc. and are redistributed under the AMD FSR SDK license, see `src/3rd party/FidelityFX/license.md` (also included in the release archive).
+The engine code is covered by the repository's `License.txt` (non-commercial redistribution, included in the release archives).
+
+The AMD FSR headers and DLLs are © Advanced Micro Devices, Inc. and are redistributed under the AMD FSR SDK license, see `src/3rd party/FidelityFX/license.md` (included in the release archives as `AMD_FSR_SDK_license.md`).
 
 ---
 
