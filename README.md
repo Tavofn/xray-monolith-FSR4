@@ -1,5 +1,69 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/themrdemonized/xray-monolith)
 
+# AMD FSR for STALKER Anomaly
+
+This is a fork of [themrdemonized/xray-monolith](https://github.com/themrdemonized/xray-monolith) (Modded Exes) that adds **AMD FSR upscaling** to the DX11 renderer. It is based on Modded Exes **2026.10.11**; everything else in the upstream documentation below still applies.
+
+| Branch | Contents |
+|---|---|
+| [`fsr`](https://github.com/Tavofn/xray-monolith-fsr/tree/fsr) | Standard Modded Exes + FSR |
+| [`fsr-mt`](https://github.com/Tavofn/xray-monolith-fsr/tree/fsr-mt) | MT-TEST Modded Exes + FSR |
+
+## Features
+
+* FSR 4 on Radeon RX 9000 and RX 7000 (desktop) GPUs, FSR 3.1 on everything else. AMD's runtime picks the best version the GPU and driver support, and the game log shows which one is active.
+* Modes: Native AA (full resolution, replaces anti-aliasing), Quality, Balanced, Performance, Ultra Performance (renders at 67%, 59%, 50% and 33% resolution and upscales).
+* The HUD, UI, main/pause menu and the 3D PDA screen stay at full resolution in every mode.
+* 3D Shader Based Scopes (3DSS): optional native resolution while aiming down a scope, so the zoomed image stays sharp.
+* Separate FSR history for second-viewport (3D) scopes.
+* Works with [Screen Space Shaders](https://www.moddb.com/mods/stalker-anomaly/addons/screen-space-shaders) (uses its per-object motion vectors, best quality) and with vanilla Anomaly shaders (the engine generates jitter and camera motion vectors itself).
+
+## Requirements
+
+* The DX11 renderer: `AnomalyDX11.exe` or `AnomalyDX11AVX.exe`
+* Windows 10 1703 or newer and a GPU with Direct3D 12 support
+* MSAA off (`r3_msaa st_opt_off`) and HDR10 off
+* `amd_fidelityfx_loader_dx12.dll` and `amd_fidelityfx_upscaler_dx12.dll` next to the exe (included in the release)
+
+## Installation
+
+1. Install [Modded Exes 2026.10.11](https://github.com/themrdemonized/xray-monolith/releases/tag/2026.10.11) as usual: the standard archive for the `fsr` release, or MT-TEST for the `fsr-mt` release.
+2. Extract the matching FSR release archive into your Anomaly folder and overwrite:
+   * `bin\AnomalyDX11.exe`, `bin\AnomalyDX11AVX.exe`
+   * `bin\amd_fidelityfx_loader_dx12.dll`, `bin\amd_fidelityfx_upscaler_dx12.dll`
+   * `db\mods\00_modded_exes_gamedata.db0` (adds the FSR options page)
+3. Start the game with the DX11 renderer, then pick a mode in the options.
+
+GAMMA: updating or reinstalling GAMMA restores the official exes. Re-apply step 2 afterwards.
+
+## Settings
+
+In game: **Options → Modded Exes → Visual → AMD FSR**. Console commands:
+
+| Command | Values | Description |
+|---|---|---|
+| `r__fsr` | `0` off, `1` Native AA, `2` Quality, `3` Balanced, `4` Performance, `5` Ultra Performance | Upscaling mode. Modes 2-5 need `vid_restart` (the options menu does this automatically). |
+| `r__fsr_scope_native` | `0` / `1` (default `1`) | Render at full resolution while aiming down a 3D Shader Based Scope. Uses extra VRAM; the first aim after loading builds the full-resolution buffers. |
+| `r__fsr_sharpness` | `0` - `1` | Extra sharpening. |
+| `r__fsr_debug` | `0` / `1` | FSR debug overlay (motion vectors and history blend). |
+
+## Known limitations
+
+* Without Screen Space Shaders, motion vectors only describe camera movement, so moving NPCs, mutants and swaying foliage can ghost slightly.
+* 3D Shader Based Scopes zoom into the rendered frame, so with `r__fsr_scope_native 0` their detail depends on the FSR mode. Quality or Balanced is recommended.
+* FSR 3.1 (non-RDNA 3/4 GPUs) looks noticeably worse than FSR 4 at Performance and Ultra Performance.
+* Only tested on a Radeon RX 9070 XT so far. Please report results on other GPUs.
+
+## Building
+
+Build as described in the upstream section below. The FSR API headers are included in `src/3rd party/FidelityFX`; the two DLLs come from the `Kits/FidelityFX/signedbin` folder of the [AMD FSR SDK 2.3](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) and must be placed next to the exe.
+
+## License
+
+The AMD FSR headers and DLLs are © Advanced Micro Devices, Inc. and are redistributed under the AMD FSR SDK license, see `src/3rd party/FidelityFX/license.md` (also included in the release archive).
+
+---
+
 # STALKER-Anomaly-modded-exes
 
 Here is list of exe files for Anomaly 1.5.3 that contains all engine patches by community required for some advanced mods to work.
