@@ -400,6 +400,11 @@ Fvector4 ps_ssfx_taa = { 1, 0.5f, 0.6f, 0 }; // Enable, Jitter, Sharpness, -
 Fvector4 ps_ssfx_fog = { 8, 1.3f, 0.1f, 0 }; // Height, Density, SunColor, -
 float ps_ssfx_fog_scattering = 0.6f; // Fog scattering intensity
 
+// AMD FSR (DX11 renderer, D3D12 interop). Needs SSFX motion vectors and MSAA off
+int ps_r__fsr = 0; // 0 off, 1 native AA, 2 quality, 3 balanced, 4 performance, 5 ultra performance (2+ need vid_restart)
+float ps_r__fsr_sharpness = 0.0f;
+int ps_r__fsr_debug = 0;
+
 int ps_ssfx_pom_refine = 0;
 Fvector4 ps_ssfx_pom = { 16, 12, 0.035f, 0.4f };  // Samples , Range, Height, AO
 
@@ -1597,6 +1602,10 @@ void xrRender_initconsole()
 	CMD4(CCC_Vector4, "ssfx_taa", &ps_ssfx_taa, Fvector4().set(0, 0, 0, 0), Fvector4().set(1, 1, 2, 1));
 	CMD4(CCC_Vector4, "ssfx_motionblur", &ps_ssfx_motionblur, Fvector4().set(1, 0, 0, 0), Fvector4().set(16, 2, 1, 100));
 	CMD4(CCC_Float, "ssfx_fog_scattering", &ps_ssfx_fog_scattering, 0, 1);
+
+	CMD4(CCC_Integer, "r__fsr", &ps_r__fsr, 0, 5);
+	CMD4(CCC_Float, "r__fsr_sharpness", &ps_r__fsr_sharpness, 0.0f, 1.0f);
+	CMD4(CCC_Integer, "r__fsr_debug", &ps_r__fsr_debug, 0, 1);
 	CMD4(CCC_Vector4, "ssfx_fog", &ps_ssfx_fog, Fvector4().set(0, 0, 0, 0), Fvector4().set(20, 5, 1, 100));
 
 	CMD4(CCC_Integer, "ssfx_pom_refine", &ps_ssfx_pom_refine, 0, 1);

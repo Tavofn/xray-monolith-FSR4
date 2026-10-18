@@ -384,6 +384,9 @@
     <ClInclude Include="r4_rendertarget.h">
       <Filter>Core_Target</Filter>
     </ClInclude>
+    <ClInclude Include="r4_fsr_bridge.h">
+      <Filter>Core_Target</Filter>
+    </ClInclude>
     <ClInclude Include="r4_rendertarget_wallmarks.h">
       <Filter>Core_Target</Filter>
     </ClInclude>
@@ -1069,6 +1072,12 @@
       <Filter>Core_Target</Filter>
     </ClCompile>
     <ClCompile Include="r4_rendertarget_phase_combine.cpp">
+      <Filter>Core_Target</Filter>
+    </ClCompile>
+    <ClCompile Include="r4_rendertarget_phase_fsr.cpp">
+      <Filter>Core_Target</Filter>
+    </ClCompile>
+    <ClCompile Include="r4_fsr_bridge.cpp">
       <Filter>Core_Target</Filter>
     </ClCompile>
     <ClCompile Include="r4_rendertarget_phase_hdao.cpp">

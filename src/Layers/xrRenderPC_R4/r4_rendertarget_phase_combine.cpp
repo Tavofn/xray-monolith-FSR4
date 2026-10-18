@@ -588,17 +588,21 @@ void CRenderTarget::phase_combine()
 		phase_fakescope(); //crookr
 	}
 
-    //SMAA
-	if (ps_smaa_quality)
+	// FSR (see phase_upscale below) replaces SMAA and SSFX TAA
+	if (!fsr_usable())
 	{
-        //PIX_EVENT(SMAA);
-        phase_smaa();
-        RCache.set_Stencil(FALSE);
-    }    
-	
-	if (RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
-	{
-		phase_ssfx_taa();
+		//SMAA
+		if (ps_smaa_quality)
+		{
+			//PIX_EVENT(SMAA);
+			phase_smaa();
+			RCache.set_Stencil(FALSE);
+		}
+
+		if (RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0)
+		{
+			phase_ssfx_taa();
+		}
 	}
 
 	if (ssfx_PrevPos_Requiered)
@@ -752,12 +756,16 @@ void CRenderTarget::phase_combine()
 	if (ps_r2_anomaly_flags.test(R2_AN_FLAG_FLARES) && ps_r2_heatvision == 0) //--DSR-- HeatVision
 		g_pGamePersistent->Environment().RenderFlares(); // lens-flares
 
+	// FSR upscale of rt_Color to display resolution; everything after this runs at display size
+	phase_upscale();
+
 	//	PP-if required
 	if (PP_Complex)
 	{
 		PIX_EVENT_C(phase_pp, dx10_marker_post);
 		phase_pp();
 	}
+	phase_upscale_finish();
 
 	//	Re-adapt luminance
 	RCache.set_Stencil(FALSE);

@@ -200,12 +200,96 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 	}
 }
 
+#if RENDER==R_R4
+//////////////////////////////////////////////////////////////////////////
+// FSR render scale: the 3D PDA screen (SSFX "pda_overlay", a forward shader showing the display-res UI
+// texture) would otherwise be rendered at the lower render resolution. Its items, and the opaque HUD for
+// depth, are captured during the scene and replayed at display resolution after the upscale.
+namespace fsr_hud
+{
+	using Item = R_dsgraph::DSGraphItem<float, false>;
+	bool capture = false;
+	bool replaying = false;
+	xr_vector<Item> depth;
+	xr_vector<Item> screen;
+
+	template <typename T, bool Reverse>
+	void copy(const R_dsgraph::mapDSGraphItems<T, Reverse>& from, xr_vector<Item>& to, bool pda_only)
+	{
+		for (const auto& item : from)
+		{
+			if (pda_only)
+			{
+				const SPass* pass = item.pSE && item.pSE->passes.size() ? item.pSE->passes[0]._get() : nullptr;
+				if (!pass || !pass->ps._get() || !strstr(pass->ps->cName.c_str(), "pda_overlay"))
+					continue;
+			}
+			to.emplace_back(float(item.sortKey), item.ssa, item.pObject, item.pVisual, item.pMatrix, item.pSE, item.b_hud_mode);
+		}
+	}
+}
+
+void fsr_hud_begin_frame(bool capture)
+{
+	fsr_hud::capture = capture;
+	fsr_hud::depth.clear();
+	fsr_hud::screen.clear();
+}
+
+bool fsr_hud_replaying()
+{
+	return fsr_hud::replaying;
+}
+
+// Called with the display-res target and depth bound
+void fsr_hud_replay()
+{
+	if (fsr_hud::screen.empty())
+		return;
+
+	PROF_EVENT("fsr_hud_replay");
+	fsr_hud::replaying = true; // FSR jitter off: depth and screen must line up at display resolution
+	CHudInitializer initializer(true);
+	RImplementation.rmNear();
+
+	auto draw = [](const fsr_hud::Item& item)
+	{
+		RCache.set_Element(item.pSE);
+		RCache.set_xform_world(*item.pMatrix);
+		RImplementation.apply_object(item.pObject);
+		RImplementation.apply_lmaterial();
+		item.pVisual->Render(calcLOD(item.ssa, item.pVisual->vis.sphere.R));
+	};
+
+	// Hands and PDA body, depth only, so fingers still cover the screen. The HUD materials' own blend states
+	// re-enable colour writes, so unbind the colour target instead of relying on set_ColorWriteEnable.
+	ID3DRenderTargetView* color_rt = RCache.get_RT(0);
+	RCache.set_RT(nullptr, 0);
+	for (const auto& item : fsr_hud::depth)
+		draw(item);
+	RCache.set_RT(color_rt, 0);
+
+	for (const auto& item : fsr_hud::screen)
+		draw(item);
+
+	RImplementation.rmNormal();
+	RCache.set_xform_world(Fidentity);
+	fsr_hud::replaying = false;
+	fsr_hud_begin_frame(false);
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // HUD render
 void CDSGraphManager::r_dsgraph_render_hud()
 {
 	PROF_EVENT("r_dsgraph_render_hud");
 	CHudInitializer initializer(true);
+
+#if RENDER==R_R4
+	if (fsr_hud::capture)
+		fsr_hud::copy(RGraph.mapHUD, fsr_hud::depth, false);
+#endif
 
 	// Rendering
 	RImplementation.rmNear();
@@ -322,6 +406,11 @@ void CDSGraphManager::r_dsgraph_render_sorted_hud()
 	HW.pContext->CopyResource(RImplementation.Target->rt_Accumulator->pSurface, RImplementation.Target->rt_Generic_0->pSurface);
 #endif
 	CHudInitializer initializer(true);
+
+#if RENDER==R_R4
+	if (fsr_hud::capture)
+		fsr_hud::copy(RGraph.mapHUDSorted.Sorted, fsr_hud::screen, true);
+#endif
 
 	RImplementation.rmNear();
 	r_dsgraph_render_graph_sorted(RGraph.mapHUDSorted.Sorted, true);

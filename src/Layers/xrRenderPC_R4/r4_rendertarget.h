@@ -3,6 +3,7 @@
 #include "../xrRender/ColorMapManager.h"
 #include "../xrRender/light_db.h"
 class light;
+class FsrBridge;
 
 //#define DU_SPHERE_NUMVERTEX 92
 //#define DU_SPHERE_NUMFACES	180
@@ -445,6 +446,34 @@ public:
 	void phase_accumulator();
 	void phase_vol_accumulator();
 	void shadow_direct(light* L, u32 dls_phase);
+
+	// AMD FSR through the D3D12 interop bridge (r4_rendertarget_phase_fsr.cpp)
+	FsrBridge* fsr_bridge;
+	bool fsr_failed;
+	// Per view (0 = main, 1 = 3D scope): each camera keeps its own FSR history and jitter sequence
+	u32 fsr_last_frame[2];
+	Fvector fsr_last_camera[2];
+	u32 fsr_jitter_index[2];
+	bool fsr_usable() const;
+	bool phase_fsr(ID3DTexture2D* output);
+
+	// FSR render scale. When fsr_scaled, every scene RT is fsr_render_* sized; between fsr_begin_scene() and
+	// fsr_end_scene() Device.dwWidth/dwHeight and HW.pBaseZB are swapped to the render size so all passes,
+	// quads and screen_res agree. Only the upscale output, phase_pp and the UI run at fsr_display_*.
+	bool fsr_scaled;
+	u32 fsr_render_w, fsr_render_h;
+	u32 fsr_display_w, fsr_display_h;
+	ref_rt rt_fsr_zb;     // render-res depth, stands in for HW.pBaseZB while scaled
+	ref_rt rt_fsr_output; // display-res upscale result, read by phase_pp through the $user$albedo texture
+	ref_rt rt_fsr_menu_distort; // display-res distortion mask for the menu PP-UI (render_menu)
+	bool fsr_scene_active;
+	bool fsr_output_bound;
+	ID3DDepthStencilView* fsr_saved_zb;
+	void fsr_begin_scene();
+	void fsr_end_scene();
+	void phase_upscale();        // after combine_2 and flares: FSR (or plain stretch) to display res
+	void phase_upscale_finish(); // after phase_pp: undo the $user$albedo redirect
+	void fsr_menu_bind(bool display_res); // render_menu: $user$generic0/1 -> display-res stand-ins and back
 
 	// SSS Stuff
 	void phase_ssfx_taa();

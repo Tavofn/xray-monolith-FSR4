@@ -442,10 +442,22 @@ void CRenderDevice::on_idle()
 	mProjectCam_prev = mProjectCam;
 	mFullTransformCam_prev = mFullTransformCam;
 
-	// Previous frame data -- 
-	mView_prev = mView_saved;
-	mProject_prev = mProject_saved;
-	mFullTransform_prev = mFullTransform_saved; // Unused?
+	// Previous frame data --
+	const u32 svp_view = m_SecondViewport.IsSVPFrame() ? 1 : 0;
+	if (m_SecondViewport.IsSVPActive())
+	{
+		// The previous frame was rendered from the other camera; use this viewport's last frame instead
+		const bool has_prev = dwFrame_saved_vp[svp_view] && dwFrame - dwFrame_saved_vp[svp_view] <= m_SecondViewport.GetSVPFrameDelay();
+		mView_prev = has_prev ? mView_saved_vp[svp_view] : mView;
+		mProject_prev = has_prev ? mProject_saved_vp[svp_view] : mProject;
+		mFullTransform_prev = has_prev ? mFullTransform_saved_vp[svp_view] : mFullTransform;
+	}
+	else
+	{
+		mView_prev = mView_saved;
+		mProject_prev = mProject_saved;
+		mFullTransform_prev = mFullTransform_saved; // Unused?
+	}
 
 	m_pRender->SetCacheXform_prev(mView_prev, mProject_prev);
 
@@ -481,6 +493,11 @@ void CRenderDevice::on_idle()
 	mFullTransform_saved = mFullTransform;
 	mView_saved = mView;
 	mProject_saved = mProject;
+
+	mFullTransform_saved_vp[svp_view] = mFullTransform;
+	mView_saved_vp[svp_view] = mView;
+	mProject_saved_vp[svp_view] = mProject;
+	dwFrame_saved_vp[svp_view] = dwFrame;
 
 	STOP_PROFILE;
 

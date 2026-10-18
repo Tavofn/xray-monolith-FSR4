@@ -18,19 +18,26 @@ void CRender::render_menu()
 	RCache.set_Stencil(FALSE);
 	RCache.set_ColorWriteEnable();
 
+	// FSR scaling makes rt_Generic_0/1 render-res; draw the menu UI into display-res stand-ins instead
+	ref_rt& menu_color = Target->fsr_scaled ? Target->rt_fsr_output : Target->rt_Generic_0;
+	ref_rt& menu_distort = Target->fsr_scaled ? Target->rt_fsr_menu_distort : Target->rt_Generic_1;
+
 	// Main Render
 	{
-		Target->u_setrt(Target->rt_Generic_0, 0, 0, HW.pBaseZB); // LDR RT
+		Target->u_setrt(menu_color, 0, 0, HW.pBaseZB); // LDR RT
 		g_pGamePersistent->OnRenderPPUI_main(); // PP-UI
 	}
 
 	// Distort
 	{
 		FLOAT ColorRGBA[4] = {127.0f / 255.0f, 127.0f / 255.0f, 0.0f, 127.0f / 255.0f};
-		Target->u_setrt(Target->rt_Generic_1, 0, 0, HW.pBaseZB); // Now RT is a distortion mask
-		HW.pContext->ClearRenderTargetView(Target->rt_Generic_1->pRT, ColorRGBA);
+		Target->u_setrt(menu_distort, 0, 0, HW.pBaseZB); // Now RT is a distortion mask
+		HW.pContext->ClearRenderTargetView(menu_distort->pRT, ColorRGBA);
 		g_pGamePersistent->OnRenderPPUI_PP(); // PP-UI
 	}
+
+	// s_menu samples $user$generic0/1; point them at the display-res stand-ins for this draw
+	Target->fsr_menu_bind(true);
 
 	// Actual Display
 	Target->u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
@@ -58,6 +65,8 @@ void CRender::render_menu()
 	pv++;
 	RCache.Vertex.Unlock(4, Target->g_menu->vb_stride);
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
+
+	Target->fsr_menu_bind(false);
 }
 
 extern u32 g_r;
@@ -97,6 +106,9 @@ void CRender::Render()
 
 	if ((Device.dwFrame % (u32)ps_r__tex_evict_interval) == 0)
 		dxRenderDeviceRender::Instance().Resources->EvictStalledTextures();
+
+	// FSR: scene renders at the render resolution until phase_upscale() (or the end of this function)
+	Target->fsr_begin_scene();
 
 	//.	VERIFY					(g_pGameLevel && g_pGameLevel->pHUD);
 
@@ -343,6 +355,7 @@ void CRender::Render()
 	if (Details)
 		Details->details_clear();
 
+	Target->fsr_end_scene();
 }
 #include "../xrRender/CHudInitializer.h"
 

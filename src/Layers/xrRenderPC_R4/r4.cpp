@@ -540,7 +540,7 @@ void CRender::create()
 	GMBase.initialize();
 	FluidManager.Initialize(70, 70, 70);
 	//	FluidManager.Initialize( 100, 100, 100 );
-	FluidManager.SetScreenSize(Device.dwWidth, Device.dwHeight);
+	FluidManager.SetScreenSize(Target->fsr_render_w, Target->fsr_render_h); // scene resolution (FSR may scale it)
 
 	Device.ModelDefferClear = xr_make_delegate(Models, &CModelPool::DeleteQueuedDeffer);
 }
@@ -589,7 +589,7 @@ void CRender::reset_end()
 	}
 	//-AVO
 
-	FluidManager.SetScreenSize(Device.dwWidth, Device.dwHeight);
+	FluidManager.SetScreenSize(Target->fsr_render_w, Target->fsr_render_h); // scene resolution (FSR may scale it)
 
 	// Set this flag true to skip the first render frame,
 	// that some data is not ready in the first frame (for example device camera position)

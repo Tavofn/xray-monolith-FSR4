@@ -1155,6 +1155,11 @@ static class ssfx_pom : public R_constant_setup
 	}
 }    ssfx_pom;
 
+#if defined(USE_DX11)
+// r4_rendertarget_phase_fsr.cpp: FSR's own jitter (NDC offset) while FSR is active
+bool fsr_jitter_ndc(Fvector2& ndc);
+#endif
+
 static class ssfx_jitter : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
@@ -1163,6 +1168,14 @@ static class ssfx_jitter : public R_constant_setup
 		float JitterY = 0;
 
 #if defined(USE_DX11)
+		Fvector2 fsr_ndc;
+		if (fsr_jitter_ndc(fsr_ndc))
+		{
+			// SSFX shaders add .xy * hpos.w to clip space, so this is the raw NDC offset; .z flags temporal AA as on
+			RCache.set_c(C, fsr_ndc.x, fsr_ndc.y, 1.0f, ps_ssfx_taa.w);
+			return;
+		}
+
 		if (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa)
 		{
 			static Fvector2 TAA_Offset[4] = 

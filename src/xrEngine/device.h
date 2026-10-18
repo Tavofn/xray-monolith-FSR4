@@ -102,6 +102,13 @@ public:
 	Fmatrix mProject_saved;
 	Fmatrix mFullTransform_saved;
 
+	// 3D scopes render every other frame from the scope camera, so "previous frame" matrices are also kept
+	// per viewport (0 = main view, 1 = scope) to give motion vectors (TAA, motion blur, FSR) the same camera
+	Fmatrix mView_saved_vp[2];
+	Fmatrix mProject_saved_vp[2];
+	Fmatrix mFullTransform_saved_vp[2];
+	u32 dwFrame_saved_vp[2] = {0, 0};
+
 	float fFOV;
 	float fASPECT;
 	float ViewportNear = 0.2f;

@@ -24,6 +24,11 @@
 #include "blender_pp_bloom.h"
 #include "blender_nightvision.h"
 #include "blender_lut.h"
+#include "r4_fsr_bridge.h"
+
+// r4_rendertarget_phase_fsr.cpp
+bool fsr_scale_wanted();
+void fsr_render_size(u32 display_w, u32 display_h, u32& render_w, u32& render_h);
 
 // HDR10
 #include "blender_hdr10_bloom.h"
@@ -363,6 +368,30 @@ CRenderTarget::CRenderTarget()
 	if( RImplementation.o.dx10_msaa_opt )
 		Msg		("dx10_MSAA_opt = on" );
 #endif // DEBUG
+	fsr_bridge = nullptr;
+	fsr_failed = false;
+	for (int v = 0; v < 2; ++v)
+	{
+		fsr_last_frame[v] = 0;
+		fsr_last_camera[v].set(0.f, 0.f, 0.f);
+		fsr_jitter_index[v] = 0;
+	}
+
+	// FSR render scale: build every scene RT at the render size by constructing with Device swapped
+	fsr_display_w = Device.dwWidth;
+	fsr_display_h = Device.dwHeight;
+	fsr_scaled = fsr_scale_wanted();
+	fsr_render_size(fsr_display_w, fsr_display_h, fsr_render_w, fsr_render_h);
+	fsr_scene_active = false;
+	fsr_output_bound = false;
+	fsr_saved_zb = nullptr;
+	if (fsr_scaled)
+	{
+		Msg("[FSR] rendering at %ux%u, upscaling to %ux%u", fsr_render_w, fsr_render_h, fsr_display_w, fsr_display_h);
+		Device.dwWidth = fsr_render_w;
+		Device.dwHeight = fsr_render_h;
+	}
+
 	param_blur = 0.f;
 	param_gray = 0.f;
 	param_noise = 0.f;
@@ -552,12 +581,21 @@ CRenderTarget::CRenderTarget()
 
 		rt_dof.create(r2_RT_dof, w, h, RImplementation.o.dx11_hdr10 ? D3DFMT_A16B16G16R16F : D3DFMT_A8R8G8B8);
 
+		// Filled by copying the swapchain, so these stay at display size under FSR scaling
+		const u32 dw = fsr_display_w, dh = fsr_display_h;
 		if (RImplementation.o.dx11_hdr10) {
-			rt_secondVP.create(r2_RT_secondVP, w, h, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
-			rt_ui_pda.create(r2_RT_ui, w, h, D3DFMT_A2R10G10B10); // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
+			rt_secondVP.create(r2_RT_secondVP, dw, dh, D3DFMT_A2R10G10B10, 1); //--#SM+#-- +SecondVP+ // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
+			rt_ui_pda.create(r2_RT_ui, dw, dh, D3DFMT_A2R10G10B10); // NOTE: this is a hack to use DXGI R10G10B10A2_UNORM
 		} else {
-			rt_secondVP.create(r2_RT_secondVP, w, h, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
-			rt_ui_pda.create(r2_RT_ui, w, h, D3DFMT_A8R8G8B8);
+			rt_secondVP.create(r2_RT_secondVP, dw, dh, D3DFMT_A8R8G8B8, 1); //--#SM+#-- +SecondVP+
+			rt_ui_pda.create(r2_RT_ui, dw, dh, D3DFMT_A8R8G8B8);
+		}
+
+		if (fsr_scaled)
+		{
+			rt_fsr_zb.create("$user$fsr_zb", w, h, D3DFMT_D24S8);
+			rt_fsr_output.create("$user$fsr_output", dw, dh, D3DFMT_A8R8G8B8);
+			rt_fsr_menu_distort.create("$user$fsr_menu_distort", dw, dh, D3DFMT_A8R8G8B8);
 		}
 
 		// TODO: R11G11B10F? needs another horrible hack + cast + update to converter function
@@ -1010,8 +1048,8 @@ CRenderTarget::CRenderTarget()
 		// Testure for async sreenshots
 		{
 			D3D_TEXTURE2D_DESC desc;
-			desc.Width = Device.dwWidth;
-			desc.Height = Device.dwHeight;
+			desc.Width = fsr_display_w; // copies the backbuffer
+			desc.Height = fsr_display_h;
 			desc.MipLevels = 1;
 			desc.ArraySize = 1;
 			desc.SampleDesc.Count = 1;
@@ -1298,10 +1336,15 @@ CRenderTarget::CRenderTarget()
 	//
 	dwWidth = Device.dwWidth;
 	dwHeight = Device.dwHeight;
+
+	Device.dwWidth = fsr_display_w;
+	Device.dwHeight = fsr_display_h;
 }
 
 CRenderTarget::~CRenderTarget()
 {
+	xr_delete(fsr_bridge);
+
 	_RELEASE(t_ss_async);
 
 	// Textures

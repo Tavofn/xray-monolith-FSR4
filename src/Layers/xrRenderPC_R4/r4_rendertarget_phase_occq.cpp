@@ -2,7 +2,11 @@
 
 void CRenderTarget::phase_occq()
 {
-	if (!RImplementation.o.dx10_msaa)
+	// Under FSR scaling HW.pBaseZB is render-res and cannot pair with the display-res backbuffer; colour
+	// writes are off anyway, so bind depth only
+	if (fsr_scene_active)
+		u_setrt(Device.dwWidth, Device.dwHeight, NULL, NULL, NULL, HW.pBaseZB);
+	else if (!RImplementation.o.dx10_msaa)
 		u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
 	else
 		u_setrt(Device.dwWidth, Device.dwHeight,NULL,NULL,NULL, rt_MSAADepth->pZRT);
