@@ -385,10 +385,19 @@ void CDSGraphManager::r_dsgraph_capture_hud()
 }
 
 #if defined(USE_DX11)
+#if RENDER==R_R4
+u32 fsr_scope_lens_frame = 0; // last frame a 3DSS lens was drawn (FSR dynamic resolution while aiming)
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // strict-sorted render
-void CDSGraphManager::r_dsgraph_render_ScopeSorted()  //  Redotix99: for 3D Shader Based Scopes 	
+void CDSGraphManager::r_dsgraph_render_ScopeSorted()  //  Redotix99: for 3D Shader Based Scopes
 {
+#if RENDER==R_R4
+	if (!RGraph.mapScopeHUDSorted.empty())
+		fsr_scope_lens_frame = Device.dwFrame;
+#endif
+
 	// Change projection
 	CHudInitializer initializer(true);
 

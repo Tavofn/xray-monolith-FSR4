@@ -1435,4 +1435,53 @@
 	<string id="ui_mm_modded_exes_optimizations_unstable_text">
 		<text>Options below are unstable and will lead to bugs and crashes, enabling them is not recommended</text>
 	</string>
+	<!-- AMD FSR -->
+	<string id="ui_mm_menu_fsr">
+		<text>AMD FSR</text>
+	</string>
+	<string id="ui_mm_fsr_modded_exes">
+		<text>AMD FSR</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_mode">
+		<text>Upscaling Mode (Restarts Renderer) (r__fsr)</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_mode_desc">
+		<text>AMD FSR 4 on Radeon RX 7000/9000, FSR 3.1 on other GPUs. Native AA keeps full resolution and only replaces anti-aliasing. Quality, Balanced, Performance and Ultra Performance render at 67%, 59%, 50% and 33% resolution and upscale. Requires the DX11 renderer, MSAA off, HDR10 off, and amd_fidelityfx_loader_dx12.dll plus amd_fidelityfx_upscaler_dx12.dll next to the exe. Works with vanilla Anomaly shaders; with Screen Space Shaders installed, moving characters and foliage upscale more cleanly.</text>
+	</string>
+	<string id="ui_mm_lst_fsr_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_lst_fsr_native">
+		<text>Native AA</text>
+	</string>
+	<string id="ui_mm_lst_fsr_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_lst_fsr_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_lst_fsr_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_lst_fsr_ultra_performance">
+		<text>Ultra Performance</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_scope_native">
+		<text>Native Resolution While Aiming 3D Scopes (r__fsr_scope_native)</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_scope_native_desc">
+		<text>3D Shader Based Scopes zoom into the rendered frame. When on, the game renders at full resolution while you aim down one, so the scope image is sharp (FPS drops to native while aiming, uses extra VRAM). When off, scopes zoom into the upscaled image. Only affects Quality to Ultra Performance.</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_sharpness">
+		<text>Sharpness (r__fsr_sharpness)</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_sharpness_desc">
+		<text>Extra sharpening applied by FSR. 0 disables it.</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_debug">
+		<text>Debug Overlay (r__fsr_debug)</text>
+	</string>
+	<string id="ui_mm_modded_exes_visual_fsr_debug_desc">
+		<text>Shows FSR's motion vector and history blend views. For troubleshooting only.</text>
+	</string>
 </string_table>

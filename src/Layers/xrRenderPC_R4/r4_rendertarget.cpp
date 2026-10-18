@@ -385,6 +385,13 @@ CRenderTarget::CRenderTarget()
 	fsr_scene_active = false;
 	fsr_output_bound = false;
 	fsr_saved_zb = nullptr;
+	fsr_native_set = nullptr;
+	fsr_native_active = false;
+	fsr_engine_jitter_applied = false;
+	fsr_engine_jitter_px.set(0.f, 0.f);
+	fsr_engine_reproject.identity();
+	fsr_base_render_w = fsr_render_w;
+	fsr_base_render_h = fsr_render_h;
 	if (fsr_scaled)
 	{
 		Msg("[FSR] rendering at %ux%u, upscaling to %ux%u", fsr_render_w, fsr_render_h, fsr_display_w, fsr_display_h);
@@ -1344,6 +1351,7 @@ CRenderTarget::CRenderTarget()
 CRenderTarget::~CRenderTarget()
 {
 	xr_delete(fsr_bridge);
+	fsr_release_native_set(); // swaps the RTs back to their own resources first
 
 	_RELEASE(t_ss_async);
 

@@ -404,6 +404,7 @@ float ps_ssfx_fog_scattering = 0.6f; // Fog scattering intensity
 int ps_r__fsr = 0; // 0 off, 1 native AA, 2 quality, 3 balanced, 4 performance, 5 ultra performance (2+ need vid_restart)
 float ps_r__fsr_sharpness = 0.0f;
 int ps_r__fsr_debug = 0;
+int ps_r__fsr_scope_native = 1; // render at display size while aiming a 3DSS scope (FSR modes 2+)
 
 int ps_ssfx_pom_refine = 0;
 Fvector4 ps_ssfx_pom = { 16, 12, 0.035f, 0.4f };  // Samples , Range, Height, AO
@@ -1606,6 +1607,7 @@ void xrRender_initconsole()
 	CMD4(CCC_Integer, "r__fsr", &ps_r__fsr, 0, 5);
 	CMD4(CCC_Float, "r__fsr_sharpness", &ps_r__fsr_sharpness, 0.0f, 1.0f);
 	CMD4(CCC_Integer, "r__fsr_debug", &ps_r__fsr_debug, 0, 1);
+	CMD4(CCC_Integer, "r__fsr_scope_native", &ps_r__fsr_scope_native, 0, 1);
 	CMD4(CCC_Vector4, "ssfx_fog", &ps_ssfx_fog, Fvector4().set(0, 0, 0, 0), Fvector4().set(20, 5, 1, 100));
 
 	CMD4(CCC_Integer, "ssfx_pom_refine", &ps_ssfx_pom_refine, 0, 1);

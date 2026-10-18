@@ -69,7 +69,8 @@ float Halton(int index, int base)
 	return result;
 }
 
-// D24S8 -> R32F, so the depth can cross into D3D12 (depth formats cannot be shared).
+// D24S8 -> R32F, so the depth can cross into D3D12 (depth formats cannot be shared). The destination may be
+// larger than the source (dynamic resolution); only the source-sized top-left region is written.
 const char g_depth_cs[] =
 	"Texture2D<float> src : register(t0);\n"
 	"RWTexture2D<float> dst : register(u0);\n"
@@ -77,10 +78,51 @@ const char g_depth_cs[] =
 	"void main(uint3 id : SV_DispatchThreadID)\n"
 	"{\n"
 	"	uint w, h;\n"
-	"	dst.GetDimensions(w, h);\n"
+	"	src.GetDimensions(w, h);\n"
 	"	if (id.x >= w || id.y >= h) return;\n"
 	"	dst[id.xy] = src.Load(int3(id.xy, 0));\n"
 	"}\n";
+
+// Camera motion vectors from depth, for games without per-object motion vectors (no Screen Space Shaders).
+// Reprojects each pixel with (jittered current clip -> previous clip) and writes previous - current in UV,
+// with the current position unjittered. HUD depth (rmNear range) moves with the camera: zero motion.
+const char g_mv_cs[] =
+	"Texture2D<float> depth : register(t0);\n"
+	"RWTexture2D<float2> mv : register(u0);\n"
+	"cbuffer params : register(b0)\n"
+	"{\n"
+	"	row_major float4x4 reproject;\n"
+	"	float2 inv_size;\n"
+	"	float2 jitter_uv;\n"
+	"	float hud_depth;\n"
+	"	float3 pad;\n"
+	"};\n"
+	"[numthreads(8, 8, 1)]\n"
+	"void main(uint3 id : SV_DispatchThreadID)\n"
+	"{\n"
+	"	uint w, h;\n"
+	"	depth.GetDimensions(w, h);\n"
+	"	if (id.x >= w || id.y >= h) return;\n"
+	"	float d = depth.Load(int3(id.xy, 0));\n"
+	"	float2 uv = (float2(id.xy) + 0.5) * inv_size;\n"
+	"	float2 m = 0;\n"
+	"	if (d > hud_depth)\n"
+	"	{\n"
+	"		float4 p = mul(float4(uv.x * 2 - 1, 1 - uv.y * 2, d, 1), reproject);\n"
+	"		p.xy /= p.w;\n"
+	"		m = float2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5) - (uv - jitter_uv);\n"
+	"	}\n"
+	"	mv[id.xy] = m;\n"
+	"}\n";
+
+struct MvParams
+{
+	float reproject[16];
+	float inv_size[2];
+	float jitter_uv[2];
+	float hud_depth;
+	float pad[3];
+};
 
 const UINT kFrames = 3;
 
@@ -123,6 +165,9 @@ struct FsrBridge::Impl
 	SharedTex color, depth, mv, output;
 
 	ComPtr<ID3D11ComputeShader> depth_cs;
+	ComPtr<ID3D11ComputeShader> mv_cs;
+	ComPtr<ID3D11Buffer> mv_cb;
+	ComPtr<ID3D11UnorderedAccessView> mv_uav;
 	ComPtr<ID3D11Texture2D> depth_copy;
 	ComPtr<ID3D11ShaderResourceView> depth_copy_srv;
 	ComPtr<ID3D11UnorderedAccessView> depth_uav;
@@ -207,28 +252,45 @@ struct FsrBridge::Impl
 		return true;
 	}
 
+	// Inputs are sized for the largest render size (the display size), so the render resolution can change
+	// every frame (FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION): each frame's inputs go to the top-left corner.
 	bool EnsureResources(UINT rw, UINT rh, DXGI_FORMAT color_fmt, DXGI_FORMAT mv_fmt, UINT dw, UINT dh, DXGI_FORMAT out_fmt)
 	{
 		const UINT rt_srv = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 		const UINT rt_srv_uav = rt_srv | D3D11_BIND_UNORDERED_ACCESS;
 
-		bool changed = !color.Matches(rw, rh, color_fmt) || !mv.Matches(rw, rh, mv_fmt) ||
-			!depth.Matches(rw, rh, DXGI_FORMAT_R32_FLOAT) || !output.Matches(dw, dh, out_fmt);
-		if (!changed)
+		const bool shared_changed = !color.Matches(dw, dh, color_fmt) || !mv.Matches(dw, dh, mv_fmt) ||
+			!depth.Matches(dw, dh, DXGI_FORMAT_R32_FLOAT) || !output.Matches(dw, dh, out_fmt);
+		if (shared_changed)
+		{
+			// D3D12 may still be reading the old textures.
+			WaitGpuIdle();
+			depth_uav.Reset();
+			mv_uav.Reset();
+
+			if (!CreateShared(color, dw, dh, color_fmt, rt_srv) ||
+				!CreateShared(mv, dw, dh, mv_fmt, rt_srv_uav) ||
+				!CreateShared(depth, dw, dh, DXGI_FORMAT_R32_FLOAT, rt_srv_uav) ||
+				!CreateShared(output, dw, dh, out_fmt, rt_srv_uav))
+				return false;
+
+			if (FAILED(dev11->CreateUnorderedAccessView(depth.t11.Get(), nullptr, &depth_uav)) ||
+				FAILED(dev11->CreateUnorderedAccessView(mv.t11.Get(), nullptr, &mv_uav)))
+			{
+				Log("[FSR] ! failed to create depth / motion vector UAVs");
+				return false;
+			}
+		}
+
+		// Depth-stencil resources can only be copied whole, so this one follows the render size
+		D3D11_TEXTURE2D_DESC cur = {};
+		if (depth_copy)
+			depth_copy->GetDesc(&cur);
+		if (depth_copy && cur.Width == rw && cur.Height == rh)
 			return true;
 
-		// D3D12 may still be reading the old textures.
-		WaitGpuIdle();
-
-		depth_uav.Reset();
 		depth_copy_srv.Reset();
 		depth_copy.Reset();
-
-		if (!CreateShared(color, rw, rh, color_fmt, rt_srv) ||
-			!CreateShared(mv, rw, rh, mv_fmt, rt_srv) ||
-			!CreateShared(depth, rw, rh, DXGI_FORMAT_R32_FLOAT, rt_srv_uav) ||
-			!CreateShared(output, dw, dh, out_fmt, rt_srv_uav))
-			return false;
 
 		D3D11_TEXTURE2D_DESC d = {};
 		d.Width = rw;
@@ -249,10 +311,9 @@ struct FsrBridge::Impl
 		srv.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 		srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		srv.Texture2D.MipLevels = 1;
-		if (FAILED(dev11->CreateShaderResourceView(depth_copy.Get(), &srv, &depth_copy_srv)) ||
-			FAILED(dev11->CreateUnorderedAccessView(depth.t11.Get(), nullptr, &depth_uav)))
+		if (FAILED(dev11->CreateShaderResourceView(depth_copy.Get(), &srv, &depth_copy_srv)))
 		{
-			Log("[FSR] ! failed to create depth conversion views");
+			Log("[FSR] ! failed to create depth conversion SRV");
 			return false;
 		}
 
@@ -300,7 +361,7 @@ struct FsrBridge::Impl
 		if (ffxQuery(&v.ctx, &pv.header) == FFX_API_RETURN_OK && pv.versionName)
 		{
 			strncpy_s(provider_name, provider_name_size, pv.versionName, _TRUNCATE);
-			Log("[FSR] upscaler context created (%s view): %s, render %ux%u -> display %ux%u",
+			Log("[FSR] upscaler context created (%s view): %s, max render %ux%u -> display %ux%u",
 				&v == &views[0] ? "main" : "scope", pv.versionName, rw, rh, dw, dh);
 		}
 
@@ -331,13 +392,58 @@ struct FsrBridge::Impl
 		c->CSSetShader(depth_cs.Get(), nullptr, 0);
 		c->CSSetShaderResources(0, 1, &srv);
 		c->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
-		c->Dispatch((depth.w + 7) / 8, (depth.h + 7) / 8, 1);
+		D3D11_TEXTURE2D_DESC src_desc;
+		depth_copy->GetDesc(&src_desc);
+		c->Dispatch((src_desc.Width + 7) / 8, (src_desc.Height + 7) / 8, 1);
 
 		srv = old_srv.Get();
 		uav = old_uav.Get();
 		c->CSSetShader(old_cs.Get(), nullptr, 0);
 		c->CSSetShaderResources(0, 1, &srv);
 		c->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+	}
+
+	void GenerateMotionVectors(const FsrBridge::Inputs& in, UINT rw, UINT rh)
+	{
+		ID3D11DeviceContext* c = ctx11.Get();
+
+		D3D11_MAPPED_SUBRESOURCE mapped;
+		if (FAILED(c->Map(mv_cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+			return;
+		MvParams* p = (MvParams*)mapped.pData;
+		memcpy(p->reproject, in.reproject, sizeof(p->reproject));
+		p->inv_size[0] = 1.0f / float(rw);
+		p->inv_size[1] = 1.0f / float(rh);
+		p->jitter_uv[0] = in.jitter_x / float(rw);
+		p->jitter_uv[1] = in.jitter_y / float(rh);
+		p->hud_depth = in.hud_depth;
+		c->Unmap(mv_cb.Get(), 0);
+
+		ComPtr<ID3D11ComputeShader> old_cs;
+		ComPtr<ID3D11ShaderResourceView> old_srv;
+		ComPtr<ID3D11UnorderedAccessView> old_uav;
+		ComPtr<ID3D11Buffer> old_cb;
+		c->CSGetShader(&old_cs, nullptr, nullptr);
+		c->CSGetShaderResources(0, 1, &old_srv);
+		c->CSGetUnorderedAccessViews(0, 1, &old_uav);
+		c->CSGetConstantBuffers(0, 1, &old_cb);
+
+		ID3D11ShaderResourceView* srv = depth_copy_srv.Get();
+		ID3D11UnorderedAccessView* uav = mv_uav.Get();
+		ID3D11Buffer* cb = mv_cb.Get();
+		c->CSSetShader(mv_cs.Get(), nullptr, 0);
+		c->CSSetShaderResources(0, 1, &srv);
+		c->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+		c->CSSetConstantBuffers(0, 1, &cb);
+		c->Dispatch((rw + 7) / 8, (rh + 7) / 8, 1);
+
+		srv = old_srv.Get();
+		uav = old_uav.Get();
+		cb = old_cb.Get();
+		c->CSSetShader(old_cs.Get(), nullptr, 0);
+		c->CSSetShaderResources(0, 1, &srv);
+		c->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+		c->CSSetConstantBuffers(0, 1, &cb);
 	}
 };
 
@@ -472,6 +578,27 @@ bool FsrBridge::Init(ID3D11Device* device, ID3D11DeviceContext* context, LogFn l
 		return false;
 	}
 
+	code.Reset();
+	errors.Reset();
+	hr = D3DCompile(g_mv_cs, sizeof(g_mv_cs) - 1, "fsr_mv_cs", nullptr, nullptr, "main", "cs_5_0",
+		D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors);
+	if (FAILED(hr) || FAILED(m->dev11->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &m->mv_cs)))
+	{
+		Log("[FSR] ! motion vector shader failed: %s", errors ? (const char*)errors->GetBufferPointer() : "");
+		return false;
+	}
+
+	D3D11_BUFFER_DESC cbd = {};
+	cbd.ByteWidth = sizeof(MvParams);
+	cbd.Usage = D3D11_USAGE_DYNAMIC;
+	cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	if (FAILED(m->dev11->CreateBuffer(&cbd, nullptr, &m->mv_cb)))
+	{
+		Log("[FSR] ! motion vector constant buffer failed");
+		return false;
+	}
+
 	char name[256];
 	WideCharToMultiByte(CP_UTF8, 0, adesc.Description, -1, name, sizeof(name), nullptr, nullptr);
 	Log("[FSR] D3D12 bridge ready on %s", name);
@@ -482,14 +609,20 @@ bool FsrBridge::Dispatch(const Inputs& in)
 {
 	ComPtr<ID3D11Texture2D> color_tex, mv_tex, out_tex;
 	if (FAILED(in.color->QueryInterface(IID_PPV_ARGS(&color_tex))) ||
-		FAILED(in.motion_vectors->QueryInterface(IID_PPV_ARGS(&mv_tex))) ||
+		(!in.generate_mv && FAILED(in.motion_vectors->QueryInterface(IID_PPV_ARGS(&mv_tex)))) ||
 		FAILED(in.output->QueryInterface(IID_PPV_ARGS(&out_tex))))
 		return false;
 
 	D3D11_TEXTURE2D_DESC cd, md, od;
 	color_tex->GetDesc(&cd);
-	mv_tex->GetDesc(&md);
 	out_tex->GetDesc(&od);
+	if (in.generate_mv)
+	{
+		md = cd;
+		md.Format = DXGI_FORMAT_R16G16_FLOAT;
+	}
+	else
+		mv_tex->GetDesc(&md);
 
 	if (cd.SampleDesc.Count != 1 || md.SampleDesc.Count != 1)
 	{
@@ -504,19 +637,25 @@ bool FsrBridge::Dispatch(const Inputs& in)
 
 	const bool hdr = in.hdr;
 	uint32_t flags = hdr ? (FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE) : FFX_UPSCALE_ENABLE_NON_LINEAR_COLORSPACE;
+	flags |= FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION; // render size may switch (e.g. native while aiming a scope)
 	if (in.debug_view)
 		flags |= FFX_UPSCALE_ENABLE_DEBUG_VISUALIZATION;
 
 	Impl::UpscaleContext& view = m->views[in.view == 1 ? 1 : 0];
 	const bool context_reset = !view.ctx;
-	if (!m->EnsureContext(view, cd.Width, cd.Height, od.Width, od.Height, flags, m_provider_name, sizeof(m_provider_name)))
+	// Max render size = display size, so switching render resolution keeps the context and its history
+	if (!m->EnsureContext(view, od.Width, od.Height, od.Width, od.Height, flags, m_provider_name, sizeof(m_provider_name)))
 		return false;
 
 	// --- D3D11: stage inputs into shared textures
 	ID3D11DeviceContext4* c11 = m->ctx11.Get();
-	c11->CopyResource(m->color.t11.Get(), in.color);
-	c11->CopyResource(m->mv.t11.Get(), in.motion_vectors);
+	const D3D11_BOX box = {0, 0, 0, cd.Width, cd.Height, 1};
+	c11->CopySubresourceRegion(m->color.t11.Get(), 0, 0, 0, 0, in.color, 0, &box);
 	m->ConvertDepth(in.depth);
+	if (in.generate_mv)
+		m->GenerateMotionVectors(in, cd.Width, cd.Height);
+	else
+		c11->CopySubresourceRegion(m->mv.t11.Get(), 0, 0, 0, 0, in.motion_vectors, 0, &box);
 
 	const UINT64 inputs_ready = ++m->fence_value;
 	c11->Signal(m->fence11.Get(), inputs_ready);

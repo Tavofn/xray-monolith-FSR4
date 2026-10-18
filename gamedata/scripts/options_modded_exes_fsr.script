@@ -1,0 +1,54 @@
+--- AMD FSR options tree
+
+-- Import smart constructors
+options_builder.import_into(this)
+
+-- Only shown when the exe has the FSR console commands
+local function if_cmd(cmd, item)
+	return get_console_cmd(0, cmd) and item or false
+end
+
+-- Options page
+PAGE = filter_false(page {
+	{ id = "fsr" },
+	if_cmd("r__fsr", list_enum {
+		id = "mode",
+		curr = function()
+			return get_console_cmd(0, "r__fsr")
+		end,
+		content = {
+			"fsr_off",
+			"fsr_native",
+			"fsr_quality",
+			"fsr_balanced",
+			"fsr_performance",
+			"fsr_ultra_performance",
+		},
+		cmd = "r__fsr",
+		restart = true,
+		vid = true,
+	}),
+	if_cmd("r__fsr_scope_native", list_bool {
+		id = "scope_native",
+		curr = function()
+			return get_console_cmd(0, "r__fsr_scope_native")
+		end,
+		cmd = "r__fsr_scope_native",
+	}),
+	if_cmd("r__fsr_sharpness", track {
+		id = "sharpness",
+		def = 0,
+		step = 0.05,
+		cmd = "r__fsr_sharpness",
+	}),
+
+	line {},
+
+	if_cmd("r__fsr_debug", list_bool {
+		id = "debug",
+		curr = function()
+			return get_console_cmd(0, "r__fsr_debug")
+		end,
+		cmd = "r__fsr_debug",
+	}),
+})

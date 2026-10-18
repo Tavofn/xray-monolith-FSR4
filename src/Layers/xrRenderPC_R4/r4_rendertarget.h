@@ -475,6 +475,25 @@ public:
 	void phase_upscale_finish(); // after phase_pp: undo the $user$albedo redirect
 	void fsr_menu_bind(bool display_res); // render_menu: $user$generic0/1 -> display-res stand-ins and back
 
+	// Dynamic resolution (r__fsr_scope_native): while aiming a 3DSS scope the scene renders at display size.
+	// Every render-res RT gets a display-size twin (built on first use); switching swaps their D3D resources, so
+	// shaders that bind RTs by name follow automatically. fsr_render_w/h is the current size, fsr_base_* the
+	// configured FSR render size.
+	struct FsrNativeSet* fsr_native_set;
+	bool fsr_native_active;
+	u32 fsr_base_render_w, fsr_base_render_h;
+	void fsr_set_native(bool native);
+	void fsr_release_native_set();
+
+	// Without Screen Space Shaders: jitter the frame's projections in the engine, restored at fsr_end_scene()
+	bool fsr_engine_jitter_applied;
+	Fvector2 fsr_engine_jitter_px;
+	Fmatrix fsr_engine_reproject; // jittered current clip -> previous clip, for depth-based motion vectors
+	Fmatrix fsr_saved_proj[3];    // main, HUD, camera-attached
+	Fmatrix fsr_saved_full[3];
+	void fsr_apply_engine_jitter();
+	void fsr_restore_engine_jitter();
+
 	// SSS Stuff
 	void phase_ssfx_taa();
 	void phase_ssfx_motion_blur();

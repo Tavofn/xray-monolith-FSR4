@@ -23,8 +23,13 @@ public:
 		int view;                       // 0..kViews-1
 		ID3D11Resource* color;          // render-res color, same format as the output target
 		ID3D11Resource* depth;          // D24S8 depth-stencil texture (copied, never bound)
-		ID3D11Resource* motion_vectors; // RGBA16F, xy = motion
+		ID3D11Resource* motion_vectors; // RGBA16F, xy = motion; unused when generate_mv
 		ID3D11Resource* output;         // display-res target the upscaled image is copied into
+
+		// No per-object motion vectors available: build camera motion vectors from depth instead
+		bool  generate_mv;
+		float reproject[16];            // jittered current clip -> previous clip, row-vector, row-major
+		float hud_depth;                // depth at or below this is HUD (moves with the camera): no motion
 
 		float jitter_x, jitter_y;       // pixels, as applied to the projection this frame
 		float mv_scale_x, mv_scale_y;   // multiplies motion_vectors.xy to get previous-current in pixels
